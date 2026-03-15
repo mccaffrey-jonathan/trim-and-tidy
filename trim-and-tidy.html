@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Trim & Tidy</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; touch-action: none; }
+  </style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
+<script>
+// ============================================================
+// Trim & Tidy — A Lawn Care Adventure (Single-File Bundle)
+// ============================================================
+
+// --- TileManager ---
+const TILE_SIZE = 30;
+const COLS = 13;
+const ROWS = 28;
+const TRIMMABLE = [1, 2, 3];
+const IMPASSABLE = [4, 5, 6, 7, 9];
+const POINTS = { 1: 10, 2: 25, 3: 50 };
+
+class TileManager {
+  constructor(levelData) {
+    this.grid = levelData.grid.map(row => [...row]);
+    this.rows = this.grid.length;
+    this.cols = this.grid[0].length;
+    this.trimmedCount = 0;
+    this.score = 0;
+    this.trimTimers = {};
+    this.trimmableTotal = 0;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++)
+        if (TRIMMABLE.includes(this.grid[r][c])) this.trimmableTotal++;
+  }
+  getTile(row, col) {
+    if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return -1;
+    return this.grid[row][col];
+  }
+  isTrimmable(row, col) { return TRIMMABLE.includes(this.getTile(row, col)); }
+  isImpassable(row, col) { return IMPASSABLE.includes(this.getTile(row, col)); }
+  getTrimmablePercent() {
+    if (this.trimmableTotal === 0) return 100;
+    return Math.floor((this.trimmedCount / this.trimmableTotal) * 100);
+  }
+  trimTile(row, col) {
+    const type = this.getTile(row, col);
+    if (!TRIMMABLE.includes(type)) return { cleared: false };
+    if (type === 3) return { cleared: false, needsTime: true, timeRequired: 300 };
+    this.grid[row][col] = 0;
+    this.trimmedCount++;
+    this.score += POINTS[type];
+    return { cleared: true, points: POINTS[type] };
+  }
+  trimHedge(row, col, deltaMs) {
+    if (this.getTile(row, col) !== 3) return { cleared: false };
+    const key = `${row},${col}`;
+    const accumulated = (this.trimTimers[key] || 0) + deltaMs;
+    if (accumulated >= 300) {
+      this.grid[row][col] = 0;
+      this.trimmedCount++;
+      this.score += POINTS[3];
+      delete this.trimTimers[key];
+      return { cleared: true, points: 50 };
+    }
+    this.trimTimers[key] = accumulated;
+    return { cleared: false, remaining: 300 - accumulated };
+  }
+  forceTrimHedge(row, col) {
+    if (this.getTile(row, col) !== 3) return { cleared: false };
+    this.grid[row][col] = 0;
+    this.trimmedCount++;
+    this.score += POINTS[3];
+    delete this.trimTimers[`${row},${col}`];
+    return { cleared: true, points: 50 };
+  }
+  resetHedgeTimer(row, col) { delete this.trimTimers[`${row},${col}`]; }
+  toPixelX(col) { return col * TILE_SIZE; }
+  toPixelY(row) { return row * TILE_SIZE; }
+  toCol(pixelX) { return Math.floor(pixelX / TILE_SIZE); }
+  toRow(pixelY) { return Math.floor(pixelY / TILE_SIZE); }
+}
+
+// --- Level Data ---
+const levels = [
+  { id:1, name:'Front Yard', timeLimit:90, requiredPercent:80, playerStart:{col:6,row:26}, grid:[
+    [7,7,7,7,7,7,7,7,7,7,7,7,7],[7,7,7,7,7,7,7,7,7,7,7,7,7],
+    [5,5,5,5,5,6,5,6,5,5,5,5,5],[8,8,8,8,8,8,8,8,8,8,8,8,8],
+    [4,1,1,2,1,1,1,1,1,1,1,1,4],[4,1,1,1,1,2,1,1,1,1,2,1,4],
+    [4,1,2,1,1,1,1,1,1,1,1,1,4],[4,1,1,1,1,1,1,1,1,9,9,9,4],
+    [4,1,1,1,2,1,1,1,1,9,9,9,4],[4,1,1,1,1,1,1,2,1,1,1,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,1,1,3,3,3,3,3,1,1,1,4],
+    [4,1,1,1,3,2,2,2,3,1,1,1,4],[4,1,1,1,3,3,3,3,3,1,1,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,2,1,1,1,1,1,1,1,2,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,1,1,1,2,1,1,1,1,1,1,4],
+    [4,1,1,1,1,1,1,1,2,1,1,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,2,1,1,1,1,1,1,1,1,1,4],[4,1,1,3,3,3,3,3,3,3,1,1,4],
+    [4,1,1,3,3,3,3,3,3,3,1,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,1,1,2,1,1,1,2,1,1,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,4,4,4,4,4,4,4,4,4,4,4,4]]},
+  { id:2, name:'Backyard', timeLimit:120, requiredPercent:80, playerStart:{col:6,row:26}, grid:[
+    [5,5,5,5,5,5,5,5,5,5,5,5,5],[5,5,5,5,5,6,5,6,5,5,5,5,5],
+    [8,8,8,8,8,8,8,8,8,8,8,8,8],[8,8,8,8,8,8,8,8,8,8,8,8,8],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,2,1,1,1,1,1,1,1,2,1,4],
+    [4,1,1,1,3,3,3,3,3,1,1,1,4],[4,1,1,1,3,2,2,2,3,1,1,1,4],
+    [4,1,1,1,3,3,3,3,3,1,1,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,2,1,1,1,1,1,1,9,9,9,4],[4,1,1,1,1,2,1,1,1,9,9,9,4],
+    [4,1,1,1,1,1,1,1,1,9,9,9,4],[4,1,3,3,1,1,1,1,1,1,1,1,4],
+    [4,1,3,3,1,1,2,1,1,1,1,1,4],[4,1,1,1,1,1,1,1,1,3,3,1,4],
+    [4,1,1,1,2,1,1,1,1,3,3,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,1,1,1,3,3,3,1,1,1,1,4],[4,1,2,1,1,3,2,3,1,1,2,1,4],
+    [4,1,1,1,1,3,3,3,1,1,1,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,1,3,1,1,1,1,3,1,1,1,4],[4,1,1,1,1,2,1,2,1,1,1,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,2,1,1,1,1,1,1,1,2,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,4,4,4,4,4,4,4,4,4,4,4,4]]},
+  { id:3, name:'Hedge Maze', timeLimit:75, requiredPercent:80, playerStart:{col:1,row:26}, grid:[
+    [4,4,4,4,4,4,4,4,4,4,4,4,4],[4,1,1,1,4,1,1,1,4,1,1,1,4],
+    [4,1,4,1,4,1,4,1,4,1,4,1,4],[4,1,4,1,1,1,4,1,1,1,4,1,4],
+    [4,1,4,4,4,1,4,4,4,1,4,1,4],[4,1,1,1,1,1,1,1,1,1,4,1,4],
+    [4,4,4,1,4,4,4,4,4,1,4,1,4],[4,3,1,1,4,2,1,1,4,1,1,1,4],
+    [4,1,4,1,4,1,4,1,4,4,4,1,4],[4,1,4,1,1,1,4,1,1,1,1,1,4],
+    [4,1,4,4,4,4,4,1,4,4,4,4,4],[4,1,1,1,1,1,1,1,4,3,1,1,4],
+    [4,4,4,4,4,4,4,1,4,1,4,1,4],[4,1,1,1,1,2,1,1,4,1,4,1,4],
+    [4,1,4,4,4,1,4,4,4,1,4,1,4],[4,1,4,1,1,1,1,1,1,1,4,1,4],
+    [4,1,4,1,4,4,4,4,4,4,4,1,4],[4,1,1,1,4,1,1,1,1,1,1,1,4],
+    [4,4,4,1,4,1,4,4,4,4,4,1,4],[4,2,1,1,4,1,4,3,1,1,1,1,4],
+    [4,1,4,4,4,1,4,1,4,4,4,4,4],[4,1,1,1,1,1,4,1,1,1,1,1,4],
+    [4,4,4,4,4,1,4,4,4,4,4,1,4],[4,1,1,1,1,1,1,1,1,2,1,1,4],
+    [4,1,4,4,4,4,4,4,4,1,4,4,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,3,1,1,2,1,1,1,3,1,1,4],[4,4,4,4,4,4,4,4,4,4,4,4,4]]},
+  { id:4, name:'Neighborhood', timeLimit:100, requiredPercent:80, playerStart:{col:6,row:26}, grid:[
+    [7,7,7,7,7,7,8,7,7,7,7,7,7],[5,5,5,6,5,5,8,5,5,6,5,5,5],
+    [8,8,8,8,8,8,8,8,8,8,8,8,8],[4,1,1,1,1,1,8,1,1,1,1,1,4],
+    [4,1,2,1,1,1,8,1,1,1,2,1,4],[4,1,1,1,3,1,8,1,3,1,1,1,4],
+    [4,1,1,1,3,1,8,1,3,1,1,1,4],[4,1,2,1,1,1,8,1,1,1,2,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,1,3,3,3,1,3,3,3,1,1,4],
+    [4,1,1,3,2,3,1,3,2,3,1,1,4],[4,1,1,3,3,3,1,3,3,3,1,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,2,1,1,1,1,1,1,1,2,1,4],
+    [4,1,1,1,1,9,9,9,1,1,1,1,4],[4,1,1,1,1,9,9,9,1,1,1,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,3,1,1,1,1,1,1,1,3,1,4],[4,1,3,1,2,1,1,1,2,1,3,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,2,1,3,3,1,3,3,1,2,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,1,1,2,1,1,1,2,1,1,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,4,4,4,4,4,4,4,4,4,4,4,4]]},
+  { id:5, name:'Grand Garden', timeLimit:150, requiredPercent:90, playerStart:{col:6,row:26}, grid:[
+    [7,7,7,7,7,7,7,7,7,7,7,7,7],[5,5,5,5,5,6,5,6,5,5,5,5,5],
+    [8,8,8,8,8,8,8,8,8,8,8,8,8],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,3,3,3,1,1,1,3,3,3,1,4],[4,1,3,2,3,1,1,1,3,2,3,1,4],
+    [4,1,3,3,3,1,1,1,3,3,3,1,4],[4,1,1,1,1,9,9,9,1,1,1,1,4],
+    [4,1,1,1,1,9,9,9,1,1,1,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,2,1,3,3,3,3,3,1,2,1,4],[4,1,1,1,3,2,2,2,3,1,1,1,4],
+    [4,1,1,1,3,3,3,3,3,1,1,1,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,3,1,1,1,1,1,1,1,1,1,3,4],[4,3,1,2,1,1,2,1,1,2,1,3,4],
+    [4,3,1,1,1,1,1,1,1,1,1,3,4],[4,1,1,1,1,1,1,1,1,1,1,1,4],
+    [4,1,1,9,9,1,1,1,9,9,1,1,4],[4,1,1,9,9,1,1,1,9,9,1,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,3,3,1,3,3,3,1,3,3,1,4],
+    [4,1,3,2,1,3,2,3,1,2,3,1,4],[4,1,3,3,1,3,3,3,1,3,3,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,1,2,1,1,1,2,1,1,1,2,1,4],
+    [4,1,1,1,1,1,1,1,1,1,1,1,4],[4,4,4,4,4,4,4,4,4,4,4,4,4]]}
+];
+
+// --- Textures ---
+function generateTextures(scene) {
+  const T = 30, P = 24;
+  const cfgs = [
+    { key:'tile_0', color:0xD2B48C, d:null },
+    { key:'tile_1', color:0x32CD32, d:'grass' },
+    { key:'tile_2', color:0x32CD32, d:'flower' },
+    { key:'tile_3', color:0x228B22, d:'hedgeLow' },
+    { key:'tile_4', color:0x0B3B0B, d:null },
+    { key:'tile_5', color:0x808080, d:'brick' },
+    { key:'tile_6', color:0x8B4513, d:'door' },
+    { key:'tile_7', color:0xCC3333, d:'roof' },
+    { key:'tile_8', color:0xC0C0C0, d:'sidewalk' },
+    { key:'tile_9', color:0x4169E1, d:'water' }
+  ];
+  function detail(g, d) {
+    if (d === 'grass') {
+      g.lineStyle(1, 0x228B22);
+      for (const x of [7,15,22]) { g.lineBetween(x,25,x-2,10); g.lineBetween(x,25,x+2,12); }
+    } else if (d === 'flower') {
+      g.fillStyle(0xFF69B4); g.fillCircle(15,15,8);
+      g.fillStyle(0xFFD700); g.fillCircle(15,15,3);
+    } else if (d === 'hedgeLow') {
+      g.lineStyle(2, 0x2EAA2E); g.strokeRect(2,2,26,26);
+    } else if (d === 'brick') {
+      g.lineStyle(1, 0x606060);
+      g.lineBetween(0,10,30,10); g.lineBetween(0,20,30,20);
+      g.lineBetween(15,0,15,10); g.lineBetween(8,10,8,20); g.lineBetween(22,20,22,30);
+    } else if (d === 'door') {
+      g.fillStyle(0x6B3410); g.fillRect(5,3,20,24);
+      g.fillStyle(0xFFD700); g.fillCircle(21,15,2);
+    } else if (d === 'roof') {
+      g.lineStyle(1, 0xAA2222);
+      for (let y = 5; y < 30; y += 8) g.lineBetween(0,y,30,y+6);
+    } else if (d === 'sidewalk') {
+      g.lineStyle(1, 0xD0D0D0); g.lineBetween(0,15,30,15); g.lineBetween(15,0,15,30);
+    } else if (d === 'water') {
+      g.lineStyle(2, 0x6495ED); g.lineBetween(5,10,25,10); g.lineBetween(3,20,27,20);
+    }
+  }
+  for (const c of cfgs) {
+    const g = scene.make.graphics({ add: false });
+    g.fillStyle(c.color); g.fillRect(0,0,T,T);
+    if (c.d) detail(g, c.d);
+    g.generateTexture(c.key, T, T); g.destroy();
+  }
+  const pg = scene.make.graphics({ add: false });
+  pg.fillStyle(0xFF8C00); pg.fillRect(0,0,P,P);
+  pg.lineStyle(2, 0xCC7000); pg.strokeRect(1,1,P-2,P-2);
+  pg.generateTexture('player', P, P); pg.destroy();
+}
+
+// --- Audio ---
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playNoise(duration, filterFreq) {
+  const ac = getAudioCtx();
+  const buf = ac.createBuffer(1, ac.sampleRate * duration, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = filterFreq;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.3, ac.currentTime);
+  g.gain.linearRampToValueAtTime(0, ac.currentTime + duration);
+  src.connect(f).connect(g).connect(ac.destination); src.start();
+}
+function playTone(freq, dur, t0) {
+  const ac = getAudioCtx(); const t = t0 || ac.currentTime;
+  const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.2, t); g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur);
+}
+function playSnip() { playNoise(0.05, 2000); }
+function playCrunch() { playNoise(0.1, 500); }
+function playDing() { playTone(800, 0.1); }
+function playComplete() { const t = getAudioCtx().currentTime; playTone(523,.15,t); playTone(659,.15,t+.15); playTone(784,.15,t+.3); }
+function playFail() { const t = getAudioCtx().currentTime; playTone(392,.2,t); playTone(262,.2,t+.2); }
+
+// --- Player ---
+class Player {
+  constructor(scene, col, row) {
+    const x = col * TILE_SIZE + TILE_SIZE / 2;
+    const y = row * TILE_SIZE + TILE_SIZE / 2;
+    this.sprite = scene.physics.add.sprite(x, y, 'player');
+    this.sprite.body.setSize(24, 24);
+    this.sprite.setCollideWorldBounds(true);
+    this.sprite.setDepth(10);
+    this.speed = 150;
+    this.facing = 'down';
+    this.currentTile = { row, col };
+    this.dirLine = scene.add.graphics().setDepth(11);
+    this.chargePercent = 0;
+    this.turboActive = false;
+    this.turboTimer = 0;
+  }
+  update(controls, delta) {
+    const { cursors, touch } = controls;
+    let vx = 0, vy = 0;
+    if (cursors.left.isDown) { vx = -1; this.facing = 'left'; }
+    if (cursors.right.isDown) { vx = 1; this.facing = 'right'; }
+    if (cursors.up.isDown) { vy = -1; this.facing = 'up'; }
+    if (cursors.down.isDown) { vy = 1; this.facing = 'down'; }
+    if (Math.abs(touch.x) > 0.1 || Math.abs(touch.y) > 0.1) {
+      vx = touch.x; vy = touch.y;
+      this.facing = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'right' : 'left') : (vy > 0 ? 'down' : 'up');
+    }
+    if (touch.left) { vx = -1; this.facing = 'left'; }
+    if (touch.right) { vx = 1; this.facing = 'right'; }
+    if (touch.up) { vy = -1; this.facing = 'up'; }
+    if (touch.down) { vy = 1; this.facing = 'down'; }
+    const spd = this.turboActive ? this.speed * 2 : this.speed;
+    this.sprite.setVelocity(vx * spd, vy * spd);
+    this.currentTile = { row: Math.floor(this.sprite.y / TILE_SIZE), col: Math.floor(this.sprite.x / TILE_SIZE) };
+    if (this.turboActive) {
+      this.turboTimer -= delta;
+      if (this.turboTimer <= 0) { this.turboActive = false; this.turboTimer = 0; this.sprite.clearTint(); }
+    }
+    this.dirLine.clear();
+    this.dirLine.lineStyle(2, 0xFFFFFF);
+    const cx = this.sprite.x, cy = this.sprite.y, len = 14;
+    let ex = cx, ey = cy;
+    if (this.facing === 'up') ey -= len; else if (this.facing === 'down') ey += len;
+    else if (this.facing === 'left') ex -= len; else if (this.facing === 'right') ex += len;
+    this.dirLine.lineBetween(cx, cy, ex, ey);
+  }
+  getTilePosition() { return this.currentTile; }
+  addCharge(amt) { this.chargePercent = Math.min(100, this.chargePercent + amt); }
+  activateTurbo() {
+    if (this.chargePercent < 100) return false;
+    this.turboActive = true; this.turboTimer = 3000; this.chargePercent = 0;
+    this.sprite.setTint(0xFFFF00); return true;
+  }
+}
+
+// --- Controls ---
+const JX = 120, JY = 740, JR = 50, DZ = 10, TX = 310, TY = 740;
+function setupControls(scene) {
+  const cursors = scene.input.keyboard.createCursorKeys();
+  const touch = { x:0, y:0, left:false, right:false, up:false, down:false };
+  const state = { cursors, touch, mode:'joystick', turboPressed:false };
+  const saved = localStorage.getItem('controlMode');
+  if (saved) state.mode = saved;
+  const gfx = scene.add.graphics().setDepth(200).setScrollFactor(0);
+  const togBg = scene.add.rectangle(360,690,50,24,0x333333,0.7).setDepth(200).setScrollFactor(0).setInteractive({useHandCursor:true});
+  const togTxt = scene.add.text(360,690,state.mode==='joystick'?'JOY':'PAD',{font:'bold 10px Arial',color:'#ffffff'}).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+  togBg.on('pointerdown', () => {
+    state.mode = state.mode === 'joystick' ? 'dpad' : 'joystick';
+    togTxt.setText(state.mode === 'joystick' ? 'JOY' : 'PAD');
+    localStorage.setItem('controlMode', state.mode);
+  });
+  state._turboBg = scene.add.circle(TX,TY,25,0x555555,0.7).setDepth(200).setScrollFactor(0).setInteractive({useHandCursor:true});
+  state._turboText = scene.add.text(TX,TY,'T',{font:'bold 16px Arial',color:'#999999'}).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+  state._turboBg.on('pointerdown', () => { state.turboPressed = true; });
+  state._turboBg.on('pointerup', () => { state.turboPressed = false; });
+  let activePtr = null;
+  function applyPtr(p) {
+    const dx = p.x - JX, dy = p.y - JY, dist = Math.sqrt(dx*dx+dy*dy);
+    if (state.mode === 'joystick') {
+      if (dist < DZ) { state.touch.x = state.touch.y = 0; return; }
+      const f = Math.min(dist, JR) / JR;
+      state.touch.x = (dx/dist)*f; state.touch.y = (dy/dist)*f;
+    } else {
+      state.touch.left = state.touch.right = state.touch.up = state.touch.down = false;
+      if (dist <= DZ) return;
+      const a = Math.atan2(dy, dx);
+      if (a > -0.785 && a <= 0.785) state.touch.right = true;
+      else if (a > 0.785 && a <= 2.356) state.touch.down = true;
+      else if (a > -2.356 && a <= -0.785) state.touch.up = true;
+      else state.touch.left = true;
+    }
+  }
+  scene.input.on('pointerdown', (p) => { if (p.x > 240) return; activePtr = p; applyPtr(p); });
+  scene.input.on('pointermove', (p) => { if (p === activePtr) applyPtr(p); });
+  scene.input.on('pointerup', (p) => {
+    if (p !== activePtr) return; activePtr = null;
+    state.touch.x = state.touch.y = 0;
+    state.touch.left = state.touch.right = state.touch.up = state.touch.down = false;
+  });
+  scene.events.on('update', () => {
+    gfx.clear(); gfx.lineStyle(2, 0xffffff, 0.3); gfx.strokeCircle(JX, JY, JR);
+    if (state.mode === 'joystick') {
+      gfx.fillStyle(0xffffff, 0.5);
+      gfx.fillCircle(JX + state.touch.x * JR, JY + state.touch.y * JR, 15);
+    } else {
+      for (const [dx,dy,a] of [[0,-1,state.touch.up],[0,1,state.touch.down],[-1,0,state.touch.left],[1,0,state.touch.right]]) {
+        gfx.fillStyle(a ? 0x32CD32 : 0xffffff, a ? 0.7 : 0.3);
+        gfx.fillCircle(JX+dx*30, JY+dy*30, 12);
+      }
+    }
+  });
+  scene.events.on('shutdown', () => {
+    [gfx,togBg,togTxt,state._turboBg,state._turboText].forEach(o => o.destroy());
+    if (state._turboPulse) { state._turboPulse.stop(); state._turboPulse = null; }
+    activePtr = null;
+  });
+  return state;
+}
+function updateTurboButton(state, pct, scene) {
+  if (!state._turboBg) return;
+  const ready = pct >= 100;
+  state._turboBg.fillColor = ready ? 0xFFFF00 : 0x555555;
+  state._turboText.setColor(ready ? '#000000' : '#999999');
+  if (ready && !state._turboPulse && scene) {
+    state._turboPulse = scene.tweens.add({ targets:state._turboBg, alpha:0.5, duration:500, yoyo:true, repeat:-1 });
+  } else if (!ready && state._turboPulse) {
+    state._turboPulse.stop(); state._turboPulse = null;
+    if (state._turboBg.active) state._turboBg.setAlpha(0.7);
+  }
+}
+
+// --- Trim Helper ---
+function handleTrimming(scene, row, col, delta) {
+  const tm = scene.tileManager, prev = scene.prevTile;
+  if (row !== prev.row || col !== prev.col) tm.resetHedgeTimer(prev.row, prev.col);
+  if (scene.player.turboActive) {
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const r = row+dr, c = col+dc;
+      if (!tm.isTrimmable(r, c)) continue;
+      const t = tm.getTile(r, c);
+      if (t === 1 || t === 2) { if (tm.trimTile(r, c).cleared) swapTile(scene, r, c); }
+      else if (t === 3) { if (tm.forceTrimHedge(r, c).cleared) swapTile(scene, r, c); }
+    }
+  } else {
+    if (!tm.isTrimmable(row, col)) return;
+    const type = tm.getTile(row, col);
+    if (type === 1 || type === 2) {
+      const res = tm.trimTile(row, col);
+      if (res.cleared) { swapTile(scene, row, col); scene.player.addCharge(type === 1 ? 1 : 2.5); if (type === 2) playDing(); else playSnip(); }
+    } else if (type === 3) {
+      const res = tm.trimHedge(row, col, delta);
+      if (res.cleared) { swapTile(scene, row, col); scene.player.addCharge(5); playCrunch(); scene.cameras.main.shake(50, 0.002); }
+    }
+  }
+}
+function swapTile(scene, row, col) {
+  const s = scene.tileSprites[row]?.[col]; if (!s) return;
+  s.setTexture('tile_0');
+  scene.tweens.add({ targets:s, scaleX:0.8, scaleY:0.8, duration:50, yoyo:true });
+}
+
+// --- Scenes ---
+class BootScene extends Phaser.Scene {
+  constructor() { super('BootScene'); }
+  create() { generateTextures(this); this.scene.start('MenuScene'); }
+}
+
+class MenuScene extends Phaser.Scene {
+  constructor() { super('MenuScene'); }
+  create() {
+    this.cameras.main.setBackgroundColor('#228B22');
+    this.cameras.main.fadeIn(300);
+    this.add.text(195,120,'TRIM & TIDY',{font:'bold 36px Arial',color:'#ffffff',stroke:'#0B3B0B',strokeThickness:4}).setOrigin(0.5);
+    this.add.text(195,170,'A Lawn Care Adventure',{font:'16px Arial',color:'#D2B48C'}).setOrigin(0.5);
+    const mower = this.add.rectangle(100,220,20,14,0xFF8C00);
+    this.tweens.add({targets:mower,x:290,duration:2000,yoyo:true,repeat:-1,ease:'Sine.easeInOut'});
+    this.add.text(195,270,'SELECT LEVEL',{font:'bold 18px Arial',color:'#ffffff'}).setOrigin(0.5);
+    const progress = this.loadProgress();
+    levels.forEach((lv, i) => {
+      const y = 320 + i * 55;
+      const unlocked = i <= progress.unlockedLevel;
+      const stars = progress.stars[i] || 0;
+      const bg = this.add.rectangle(195,y,300,44,unlocked?0x32CD32:0x555555,0.8).setStrokeStyle(2,0xffffff);
+      const starStr = unlocked && stars > 0 ? '  ' + '\u2605'.repeat(stars) + '\u2606'.repeat(3-stars) : '';
+      this.add.text(60,y,`${lv.id}. ${lv.name}${starStr}`,{font:'14px Arial',color:unlocked?'#ffffff':'#999999'}).setOrigin(0,0.5);
+      if (!unlocked) this.add.text(330,y,'\uD83D\uDD12',{font:'16px Arial'}).setOrigin(0.5);
+      if (unlocked) {
+        bg.setInteractive({useHandCursor:true});
+        bg.on('pointerdown', () => { this.cameras.main.fadeOut(300); this.time.delayedCall(300, () => { this.scene.start('GameScene',{level:i}); }); });
+      }
+    });
+    this.add.text(195,620,'Arrow Keys / Touch to Move',{font:'12px Arial',color:'#AADDAA'}).setOrigin(0.5);
+    this.add.text(195,640,'Space / Tap Turbo Button for Turbo Trim!',{font:'12px Arial',color:'#AADDAA'}).setOrigin(0.5);
+  }
+  loadProgress() {
+    try { const s = JSON.parse(localStorage.getItem('trimTidyProgress')); if (s) return s; } catch(e) {}
+    return { unlockedLevel:0, stars:[] };
+  }
+}
+
+class GameScene extends Phaser.Scene {
+  constructor() { super('GameScene'); }
+  init(data) { this.levelIndex = data.level ?? 0; }
+  create() {
+    this.cameras.main.fadeIn(300);
+    const ld = levels[this.levelIndex];
+    this.tileManager = new TileManager(ld);
+    this.tileSprites = [];
+    this.impassableGroup = this.physics.add.staticGroup();
+    const tm = this.tileManager;
+    for (let r = 0; r < tm.rows; r++) {
+      this.tileSprites[r] = [];
+      for (let c = 0; c < tm.cols; c++) {
+        const type = tm.getTile(r, c), x = c*TILE_SIZE, y = r*TILE_SIZE, key = 'tile_'+type;
+        if (IMPASSABLE.includes(type)) {
+          const img = this.physics.add.staticImage(x+TILE_SIZE/2,y+TILE_SIZE/2,key);
+          img.body.setSize(TILE_SIZE,TILE_SIZE); img.setDisplaySize(TILE_SIZE,TILE_SIZE);
+          this.impassableGroup.add(img); this.tileSprites[r][c] = img;
+        } else { this.tileSprites[r][c] = this.add.image(x,y,key).setOrigin(0,0); }
+      }
+    }
+    this.impassableGroup.refresh();
+    const {col,row} = ld.playerStart;
+    this.player = new Player(this, col, row);
+    this.controls = setupControls(this);
+    this.physics.add.collider(this.player.sprite, this.impassableGroup);
+    this.scene.launch('HUDScene', {levelName:ld.name});
+    this.prevTile = {row,col};
+    this.levelComplete = false;
+    this.timeRemaining = ld.timeLimit;
+    this.requiredPercent = ld.requiredPercent;
+    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this._onBlur = () => { if (!this.levelComplete) this.scene.pause(); };
+    this._onFocus = () => { this.scene.resume(); };
+    this.game.events.on('blur', this._onBlur);
+    this.game.events.on('focus', this._onFocus);
+    this.events.on('shutdown', () => { this.game.events.off('blur',this._onBlur); this.game.events.off('focus',this._onFocus); });
+  }
+  update(time, delta) {
+    if (this.levelComplete) return;
+    this.player.update(this.controls, delta);
+    if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || this.controls.turboPressed) {
+      if (this.player.activateTurbo()) this.cameras.main.shake(100, 0.005);
+      this.controls.turboPressed = false;
+    }
+    updateTurboButton(this.controls, this.player.chargePercent, this);
+    const {row,col} = this.player.getTilePosition();
+    handleTrimming(this, row, col, delta);
+    this.timeRemaining -= delta / 1000;
+    const pct = this.tileManager.getTrimmablePercent();
+    this.events.emit('updateHUD', {score:this.tileManager.score,percent:pct,timeRemaining:this.timeRemaining,chargePercent:this.player.chargePercent});
+    if (pct >= this.requiredPercent) this.completeLevel(true, pct);
+    else if (this.timeRemaining <= 0) this.completeLevel(false, pct);
+    this.prevTile = {row,col};
+  }
+  completeLevel(success, pct) {
+    this.levelComplete = true;
+    this.cameras.main.fadeOut(300);
+    if (success) playComplete(); else playFail();
+    const stars = pct >= 100 ? 3 : pct >= 90 ? 2 : 1;
+    const tb = success ? Math.floor(Math.max(0, this.timeRemaining)) * 10 : 0;
+    this.time.delayedCall(300, () => {
+      this.scene.start('LevelCompleteScene', {success,levelIndex:this.levelIndex,score:this.tileManager.score+tb,timeBonus:tb,percent:pct,stars});
+    });
+  }
+}
+
+class HUDScene extends Phaser.Scene {
+  constructor() { super('HUDScene'); }
+  init(data) { this.levelName = data.levelName || ''; }
+  create() {
+    this.cameras.main.setScroll(0, 0);
+    this.add.rectangle(195,18,390,36,0x000000,0.5).setDepth(100);
+    const s = {font:'14px Arial',color:'#ffffff'};
+    this.scoreText = this.add.text(10,8,'Score: 0',s).setDepth(101);
+    this.levelText = this.add.text(195,8,this.levelName,{...s,align:'center'}).setOrigin(0.5,0).setDepth(101);
+    this.percentText = this.add.text(380,8,'0%',s).setOrigin(1,0).setDepth(101);
+    this.timerText = this.add.text(195,30,'',{font:'12px Arial',color:'#ffffff'}).setOrigin(0.5,0).setDepth(101);
+    this._timerPulse = null;
+    this.add.rectangle(195,832,120,8,0x333333,0.7).setDepth(100);
+    this.chargeBar = this.add.rectangle(136,832,0,6,0xFFFF00).setOrigin(0,0.5).setDepth(101);
+    this.chargeLabel = this.add.text(195,822,'',{font:'bold 10px Arial',color:'#FFD700'}).setOrigin(0.5,1).setDepth(101);
+    this.scene.get('GameScene').events.on('updateHUD', this.onUpdate, this);
+  }
+  onUpdate(d) {
+    this.scoreText.setText('Score: ' + d.score);
+    const p = d.percent;
+    this.percentText.setText(p + '%');
+    this.percentText.setColor(p >= 80 ? '#32CD32' : p >= 50 ? '#FFD700' : '#ffffff');
+    if (d.timeRemaining !== undefined) {
+      const t = Math.max(0, Math.ceil(d.timeRemaining));
+      this.timerText.setText(`${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`);
+      if (t < 15) {
+        this.timerText.setColor('#FF4444'); this.timerText.setFontSize(14);
+        if (!this._timerPulse) this._timerPulse = this.tweens.add({targets:this.timerText,alpha:0.4,duration:400,yoyo:true,repeat:-1});
+      } else if (t < 30) { this.timerText.setColor('#FFAA00'); this.timerText.setFontSize(13); }
+      else { this.timerText.setColor('#ffffff'); this.timerText.setFontSize(12); }
+    }
+    if (d.chargePercent !== undefined) {
+      this.chargeBar.setSize(Math.round((d.chargePercent/100)*118), 6);
+      if (d.chargePercent >= 100) { this.chargeLabel.setText('TURBO READY!'); this.chargeBar.setFillStyle(0x00FF00); }
+      else { this.chargeLabel.setText(''); this.chargeBar.setFillStyle(0xFFFF00); }
+    }
+  }
+}
+
+class LevelCompleteScene extends Phaser.Scene {
+  constructor() { super('LevelCompleteScene'); }
+  init(data) { this.result = data; }
+  create() {
+    this.scene.stop('GameScene'); this.scene.stop('HUDScene');
+    this.cameras.main.setBackgroundColor('#1a1a2e');
+    const {success,levelIndex,score,timeBonus,percent,stars} = this.result;
+    if (success) {
+      this.add.text(195,180,'Level Complete!',{font:'bold 32px Arial',color:'#32CD32'}).setOrigin(0.5);
+      [`Trimmed: ${percent}%`,`Score: ${score-timeBonus}`,`Time Bonus: +${timeBonus}`,`Total: ${score}`].forEach((l,i) => {
+        this.add.text(195,260+i*30,l,{font:'16px Arial',color:'#ffffff'}).setOrigin(0.5);
+      });
+      for (let i = 0; i < 3; i++)
+        this.add.text(155+i*40,400,i<stars?'\u2605':'\u2606',{font:'32px Arial',color:i<stars?'#FFD700':'#666666'}).setOrigin(0.5);
+      this.saveProgress(levelIndex, stars);
+      if (levelIndex < levels.length - 1)
+        this.btn(195,500,'Next Level',() => this.scene.start('GameScene',{level:levelIndex+1}));
+      else
+        this.add.text(195,490,'You Win!',{font:'bold 24px Arial',color:'#FFD700'}).setOrigin(0.5);
+      this.btn(195,560,'Menu',() => this.scene.start('MenuScene'));
+    } else {
+      this.add.text(195,200,"Time's Up!",{font:'bold 32px Arial',color:'#FF4444'}).setOrigin(0.5);
+      this.add.text(195,280,`Trimmed: ${percent}%`,{font:'16px Arial',color:'#ffffff'}).setOrigin(0.5);
+      this.add.text(195,310,`Score: ${score}`,{font:'16px Arial',color:'#ffffff'}).setOrigin(0.5);
+      this.btn(195,420,'Retry',() => this.scene.start('GameScene',{level:levelIndex}));
+      this.btn(195,480,'Menu',() => this.scene.start('MenuScene'));
+    }
+  }
+  btn(x,y,label,cb) {
+    const bg = this.add.rectangle(x,y,200,40,0x444444,0.9).setStrokeStyle(2,0xffffff).setInteractive({useHandCursor:true});
+    const txt = this.add.text(x,y,label,{font:'bold 16px Arial',color:'#ffffff'}).setOrigin(0.5);
+    bg.on('pointerover', () => bg.setFillStyle(0x666666,0.9));
+    bg.on('pointerout', () => bg.setFillStyle(0x444444,0.9));
+    bg.on('pointerdown', () => {
+      if (this._nav) return; this._nav = true;
+      bg.setFillStyle(0x888888,0.9); txt.setColor('#aaaaaa'); bg.disableInteractive(); cb();
+    });
+  }
+  saveProgress(li, stars) {
+    let p; try { p = JSON.parse(localStorage.getItem('trimTidyProgress')) || {unlockedLevel:0,stars:[]}; } catch(e) { p = {unlockedLevel:0,stars:[]}; }
+    p.unlockedLevel = Math.max(p.unlockedLevel, li+1);
+    p.stars[li] = Math.max(p.stars[li]||0, stars);
+    localStorage.setItem('trimTidyProgress', JSON.stringify(p));
+  }
+}
+
+// --- Launch ---
+new Phaser.Game({
+  type: Phaser.AUTO,
+  width: 390,
+  height: 844,
+  backgroundColor: '#87CEEB',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
+  scene: [BootScene, MenuScene, GameScene, HUDScene, LevelCompleteScene]
+});
+</script>
+</body>
+</html>
