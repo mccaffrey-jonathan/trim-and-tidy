@@ -1,0 +1,12 @@
+import { generateTextures } from '../utils/textures.js';
+
+export default class BootScene extends Phaser.Scene {
+  constructor() {
+    super('BootScene');
+  }
+
+  create() {
+    generateTextures(this);
+    this.scene.start('GameScene');
+  }
+}
