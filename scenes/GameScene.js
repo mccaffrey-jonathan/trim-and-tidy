@@ -17,11 +17,33 @@ export default class GameScene extends Phaser.Scene {
     this.tileManager = new TileManager(levelData);
     this.tileSprites = [];
     this.impassableGroup = this.physics.add.staticGroup();
+    this.buildTileGrid();
 
-    for (let r = 0; r < this.tileManager.rows; r++) {
+    // Player
+    const { col, row } = levelData.playerStart;
+    this.player = new Player(this, col, row);
+    this.controls = setupControls(this);
+    this.physics.add.collider(this.player.sprite, this.impassableGroup);
+
+    // HUD
+    this.scene.launch('HUDScene', { levelName: levelData.name });
+
+    // State
+    this.prevTile = { row, col };
+    this.levelComplete = false;
+    this.timeRemaining = levelData.timeLimit;
+    this.requiredPercent = levelData.requiredPercent;
+
+    // Spacebar for turbo
+    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+  }
+
+  buildTileGrid() {
+    const tm = this.tileManager;
+    for (let r = 0; r < tm.rows; r++) {
       this.tileSprites[r] = [];
-      for (let c = 0; c < this.tileManager.cols; c++) {
-        const type = this.tileManager.getTile(r, c);
+      for (let c = 0; c < tm.cols; c++) {
+        const type = tm.getTile(r, c);
         const x = c * TILE_SIZE;
         const y = r * TILE_SIZE;
         const key = 'tile_' + type;
@@ -40,15 +62,124 @@ export default class GameScene extends Phaser.Scene {
       }
     }
     this.impassableGroup.refresh();
-
-    // Player
-    const { col, row } = levelData.playerStart;
-    this.player = new Player(this, col, row);
-    this.controls = setupControls(this);
-    this.physics.add.collider(this.player.sprite, this.impassableGroup);
   }
 
   update(time, delta) {
+    if (this.levelComplete) return;
+
     this.player.update(this.controls, delta);
+
+    // Turbo activation
+    if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+      this.player.activateTurbo();
+    }
+
+    // Trimming
+    const { row, col } = this.player.getTilePosition();
+    this.handleTrimming(row, col, delta);
+
+    // Timer
+    this.timeRemaining -= delta / 1000;
+    const percent = this.tileManager.getTrimmablePercent();
+
+    // Emit HUD update
+    this.events.emit('updateHUD', {
+      score: this.tileManager.score,
+      percent,
+      timeRemaining: this.timeRemaining,
+      chargePercent: this.player.chargePercent
+    });
+
+    // Win/lose checks
+    if (percent >= this.requiredPercent) {
+      this.completeLevel(true, percent);
+    } else if (this.timeRemaining <= 0) {
+      this.completeLevel(false, percent);
+    }
+
+    this.prevTile = { row, col };
+  }
+
+  handleTrimming(row, col, delta) {
+    const tm = this.tileManager;
+
+    // Reset hedge timer if moved off previous hedge
+    if (row !== this.prevTile.row || col !== this.prevTile.col) {
+      tm.resetHedgeTimer(this.prevTile.row, this.prevTile.col);
+    }
+
+    if (this.player.turboActive) {
+      this.trimArea(row, col, delta);
+    } else {
+      this.trimSingle(row, col, delta);
+    }
+  }
+
+  trimSingle(row, col, delta) {
+    if (!this.tileManager.isTrimmable(row, col)) return;
+    const type = this.tileManager.getTile(row, col);
+
+    if (type === 1 || type === 2) {
+      const result = this.tileManager.trimTile(row, col);
+      if (result.cleared) {
+        this.swapTileTexture(row, col);
+        this.player.addCharge(type === 1 ? 1 : 2.5);
+      }
+    } else if (type === 3) {
+      const result = this.tileManager.trimHedge(row, col, delta);
+      if (result.cleared) {
+        this.swapTileTexture(row, col);
+        this.player.addCharge(5);
+      }
+    }
+  }
+
+  trimArea(row, col, delta) {
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const r = row + dr;
+        const c = col + dc;
+        if (!this.tileManager.isTrimmable(r, c)) continue;
+        const type = this.tileManager.getTile(r, c);
+        if (type === 1 || type === 2) {
+          const result = this.tileManager.trimTile(r, c);
+          if (result.cleared) this.swapTileTexture(r, c);
+        } else if (type === 3) {
+          // Instant trim during turbo
+          this.tileManager.grid[r][c] = 0;
+          this.tileManager.trimmedCount++;
+          this.tileManager.score += 50;
+          delete this.tileManager.trimTimers[`${r},${c}`];
+          this.swapTileTexture(r, c);
+        }
+      }
+    }
+  }
+
+  swapTileTexture(row, col) {
+    const sprite = this.tileSprites[row][col];
+    if (!sprite) return;
+    sprite.setTexture('tile_0');
+    // Quick scale animation
+    this.tweens.add({
+      targets: sprite,
+      scaleX: 0.8, scaleY: 0.8,
+      duration: 50,
+      yoyo: true
+    });
+  }
+
+  completeLevel(success, percent) {
+    this.levelComplete = true;
+    const stars = percent >= 100 ? 3 : percent >= 90 ? 2 : 1;
+    const timeBonus = success ? Math.floor(Math.max(0, this.timeRemaining)) * 10 : 0;
+    this.scene.start('LevelCompleteScene', {
+      success,
+      levelIndex: this.levelIndex,
+      score: this.tileManager.score + timeBonus,
+      timeBonus,
+      percent,
+      stars
+    });
   }
 }
