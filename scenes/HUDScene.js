@@ -8,7 +8,6 @@ export default class HUDScene extends Phaser.Scene {
   }
 
   create() {
-    // Fixed overlay - don't scroll with camera
     this.cameras.main.setScroll(0, 0);
 
     // Semi-transparent bar at top
@@ -23,42 +22,74 @@ export default class HUDScene extends Phaser.Scene {
     this.percentText = this.add.text(380, 8, '0%', style)
       .setOrigin(1, 0).setDepth(101);
 
-    // Timer text (below HUD bar)
+    // Timer text
     this.timerText = this.add.text(195, 30, '', {
       font: '12px Arial', color: '#ffffff'
     }).setOrigin(0.5, 0).setDepth(101);
+    this._timerPulse = null;
 
-    // Charge bar background
+    // Charge bar
     this.add.rectangle(195, 832, 120, 8, 0x333333, 0.7).setDepth(100);
     this.chargeBar = this.add.rectangle(136, 832, 0, 6, 0xFFFF00)
       .setOrigin(0, 0.5).setDepth(101);
     this.chargeLabel = this.add.text(195, 822, '', {
-      font: '10px Arial', color: '#FFD700'
+      font: 'bold 10px Arial', color: '#FFD700'
     }).setOrigin(0.5, 1).setDepth(101);
 
-    // Listen for HUD updates from GameScene
     const gameScene = this.scene.get('GameScene');
     gameScene.events.on('updateHUD', this.onUpdate, this);
   }
 
   onUpdate(data) {
     this.scoreText.setText('Score: ' + data.score);
-    this.percentText.setText(data.percent + '%');
 
+    // Percent with color feedback
+    const pct = data.percent;
+    this.percentText.setText(pct + '%');
+    if (pct >= 80) {
+      this.percentText.setColor('#32CD32');
+    } else if (pct >= 50) {
+      this.percentText.setColor('#FFD700');
+    } else {
+      this.percentText.setColor('#ffffff');
+    }
+
+    // Timer with progressive warning
     if (data.timeRemaining !== undefined) {
       const t = Math.max(0, Math.ceil(data.timeRemaining));
       const min = Math.floor(t / 60);
       const sec = String(t % 60).padStart(2, '0');
       this.timerText.setText(`${min}:${sec}`);
-      this.timerText.setColor(t < 15 ? '#FF4444' : '#ffffff');
+
+      if (t < 15) {
+        this.timerText.setColor('#FF4444');
+        this.timerText.setFontSize(14);
+        if (!this._timerPulse) {
+          this._timerPulse = this.tweens.add({
+            targets: this.timerText, alpha: 0.4,
+            duration: 400, yoyo: true, repeat: -1
+          });
+        }
+      } else if (t < 30) {
+        this.timerText.setColor('#FFAA00');
+        this.timerText.setFontSize(13);
+      } else {
+        this.timerText.setColor('#ffffff');
+        this.timerText.setFontSize(12);
+      }
     }
 
+    // Charge bar — use Math.round for visual accuracy
     if (data.chargePercent !== undefined) {
-      const w = Math.floor((data.chargePercent / 100) * 118);
+      const w = Math.round((data.chargePercent / 100) * 118);
       this.chargeBar.setSize(w, 6);
-      this.chargeLabel.setText(
-        data.chargePercent >= 100 ? 'TURBO READY!' : ''
-      );
+      if (data.chargePercent >= 100) {
+        this.chargeLabel.setText('TURBO READY!');
+        this.chargeBar.setFillStyle(0x00FF00);
+      } else {
+        this.chargeLabel.setText('');
+        this.chargeBar.setFillStyle(0xFFFF00);
+      }
     }
   }
 }

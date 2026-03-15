@@ -49,11 +49,7 @@ function trimArea(scene, row, col) {
       if (type === 1 || type === 2) {
         if (tm.trimTile(r, c).cleared) swapTile(scene, r, c);
       } else if (type === 3) {
-        tm.grid[r][c] = 0;
-        tm.trimmedCount++;
-        tm.score += 50;
-        delete tm.trimTimers[`${r},${c}`];
-        swapTile(scene, r, c);
+        if (tm.forceTrimHedge(r, c).cleared) swapTile(scene, r, c);
       }
     }
   }

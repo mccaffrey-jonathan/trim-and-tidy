@@ -11,7 +11,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   init(data) {
-    this.levelIndex = data.level || 0;
+    this.levelIndex = data.level ?? 0;
   }
 
   create() {
@@ -36,8 +36,15 @@ export default class GameScene extends Phaser.Scene {
 
     this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-    this.game.events.on('blur', () => { this.scene.pause(); });
-    this.game.events.on('focus', () => { this.scene.resume(); });
+    this._onBlur = () => { if (!this.levelComplete) this.scene.pause(); };
+    this._onFocus = () => { this.scene.resume(); };
+    this.game.events.on('blur', this._onBlur);
+    this.game.events.on('focus', this._onFocus);
+
+    this.events.on('shutdown', () => {
+      this.game.events.off('blur', this._onBlur);
+      this.game.events.off('focus', this._onFocus);
+    });
   }
 
   buildTileGrid() {
@@ -78,7 +85,7 @@ export default class GameScene extends Phaser.Scene {
       this.controls.turboPressed = false;
     }
 
-    updateTurboButton(this.controls, this.player.chargePercent);
+    updateTurboButton(this.controls, this.player.chargePercent, this);
 
     const { row, col } = this.player.getTilePosition();
     handleTrimming(this, row, col, delta);

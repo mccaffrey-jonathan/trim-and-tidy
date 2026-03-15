@@ -94,10 +94,23 @@ export default class LevelCompleteScene extends Phaser.Scene {
     const bg = this.add.rectangle(x, y, 200, 40, 0x444444, 0.9)
       .setStrokeStyle(2, 0xffffff)
       .setInteractive({ useHandCursor: true });
-    this.add.text(x, y, label, {
+    const text = this.add.text(x, y, label, {
       font: 'bold 16px Arial', color: '#ffffff'
     }).setOrigin(0.5);
-    bg.on('pointerdown', callback);
+
+    // Hover feedback
+    bg.on('pointerover', () => { bg.setFillStyle(0x666666, 0.9); });
+    bg.on('pointerout', () => { bg.setFillStyle(0x444444, 0.9); });
+
+    // Debounced click — disable after first press to prevent double navigation
+    bg.on('pointerdown', () => {
+      if (this._navigating) return;
+      this._navigating = true;
+      bg.setFillStyle(0x888888, 0.9);
+      text.setColor('#aaaaaa');
+      bg.disableInteractive();
+      callback();
+    });
   }
 
   saveProgress(levelIndex, stars) {

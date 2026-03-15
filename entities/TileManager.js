@@ -74,6 +74,15 @@ export default class TileManager {
     return { cleared: false, remaining: 300 - accumulated };
   }
 
+  forceTrimHedge(row, col) {
+    if (this.getTile(row, col) !== 3) return { cleared: false };
+    this.grid[row][col] = 0;
+    this.trimmedCount++;
+    this.score += POINTS[3];
+    delete this.trimTimers[`${row},${col}`];
+    return { cleared: true, points: 50 };
+  }
+
   resetHedgeTimer(row, col) {
     delete this.trimTimers[`${row},${col}`];
   }
