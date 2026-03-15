@@ -71,7 +71,7 @@ E:/nemo-claw/
     Player.js                -- Player class: movement, facing, physics body
     TileManager.js           -- Tile grid state, queries, trim logic (pure methods)
   utils/
-    controls.js              -- Arrow keys + mobile virtual D-pad
+    controls.js              -- Arrow keys + mobile virtual joystick/D-pad (toggleable)
     textures.js              -- Helper functions for procedural texture creation
     audio.js                 -- Web Audio procedural sound effects
   tests/
@@ -679,28 +679,63 @@ For white noise: create an AudioBuffer, fill with random values (-1 to 1), play 
 
 #### `utils/controls.js`
 
-**`[THINK EXTENDED]` — Virtual D-pad implementation:**
+**`[THINK EXTENDED]` — Dual touch control modes (virtual joystick + D-pad) with toggle:**
 
-Expand to detect touch and render a D-pad:
+Expand to detect touch and offer TWO control modes, toggled by a small button:
 
-`setupControls(scene)` now:
-1. Creates cursor keys (keyboard) as before
-2. Checks `scene.sys.game.device.input.touch`
-3. If touch available, creates a virtual D-pad:
-   - A container positioned at bottom-center (x=195, y=740)
-   - Four arrow buttons arranged in a cross pattern (up/down/left/right)
-   - Each button is a semi-transparent circle or rounded-rect with an arrow triangle inside
-   - `setAlpha(0.4)`, `setInteractive()`, `setScrollFactor(0)` (fixed to camera)
-   - On `pointerdown`: set a direction flag (`controls.touchLeft = true`)
-   - On `pointerup` and `pointerout`: clear the flag
-4. Returns an object: `{ cursors, touch: { left, right, up, down } }`
+**Mode 1: Virtual Joystick (default)**
+- A semi-transparent circle (radius 50) at bottom-center (x=195, y=740) as the joystick base
+- On `pointerdown` inside the base: track pointer position relative to center
+- Calculate angle and distance from center: `dx = pointer.x - baseX`, `dy = pointer.y - baseY`
+- Normalize to a unit vector if distance > deadzone (10px), clamp to max radius
+- Set `touch.x` and `touch.y` as normalized -1 to 1 values
+- On `pointerup`: reset to 0,0
+- Draw a small filled "thumb" circle that follows the pointer within the base radius
+- **Advantage:** smooth analog-feel movement, natural for phones
 
-Update `Player.update` to accept this combined controls object and check both keyboard and touch state.
+**Mode 2: D-pad**
+- Four arrow buttons in a cross pattern at same position
+- Each button is a semi-transparent rounded-rect with arrow triangle
+- On `pointerdown`: set direction flag; on `pointerup`/`pointerout`: clear flag
+- **Advantage:** precise cardinal movement, better for tight maze corridors
+
+**Toggle button:**
+- Small icon (30x30) in bottom-right corner showing "JOY" or "PAD" text
+- Tapping swaps between modes
+- Save preference to `localStorage` key `'controlMode'`
+
+`setupControls(scene)` returns: `{ cursors, touch: { x, y, left, right, up, down }, mode, toggle() }`
+
+Player.update reads both: keyboard cursors OR touch state (joystick uses x/y for velocity scaling, D-pad uses boolean flags).
 
 #### `entities/Player.js`
-- Accept combined controls (keyboard + touch flags)
-- Check: `if (cursors.left.isDown || touch.left)` etc.
+- Accept combined controls (keyboard + touch flags + joystick axes)
+- Keyboard: `if (cursors.left.isDown)` → velocity.x = -speed
+- Joystick: `velocity.x = touch.x * speed`, `velocity.y = touch.y * speed` (analog!)
+- D-pad: `if (touch.left)` → velocity.x = -speed
 - Add a direction indicator: a small Graphics line extending 10px from player center in facing direction (update each frame)
+
+**Special Ability — Turbo Trim:**
+- A charge meter fills as the player trims tiles (1% per grass, 2.5% per flower, 5% per hedge)
+- Displayed as a colored bar below the D-pad/joystick (or in the HUD)
+- When meter reaches 100%, a "TURBO" button appears (or player taps the charge bar)
+- **Activating Turbo Trim:** for 3 seconds, the player moves 2x speed AND auto-trims in a 3x3 area around them (not just the tile they're on). Hedges are trimmed instantly during turbo. A bright yellow glow effect surrounds the player.
+- After use, meter resets to 0%
+- Adds strategic depth: do you use turbo on dense grass for speed, or save it for a hedge cluster?
+
+**Implementation in Player.js:**
+- `this.chargePercent = 0` — incremented by GameScene when tiles are trimmed
+- `this.turboActive = false`, `this.turboTimer = 0`
+- `addCharge(amount)` — adds to chargePercent, caps at 100
+- `activateTurbo()` — if chargePercent >= 100, sets turboActive=true, turboTimer=3000, resets charge
+- In `update(delta)`: if turboActive, decrement turboTimer, set speed to 300 (2x). When timer hits 0, deactivate.
+- GameScene checks `player.turboActive` — if true, trims 3x3 area around player tile, hedges clear instantly
+
+**Turbo button on touch:**
+- A circular button (radius 25) to the right of the joystick/D-pad, grayed out when charge < 100%
+- Turns bright yellow and pulses when ready
+- Tapping activates turbo
+- On keyboard: Space bar activates turbo
 
 #### `scenes/GameScene.js`
 - On tile trim: play appropriate sound from `audio.js`
@@ -712,8 +747,12 @@ Update `Player.update` to accept this combined controls object and check both ke
 
 ### Verification
 - Open in Chrome DevTools with iPhone device simulation
-- D-pad appears at bottom of screen
-- Tapping D-pad arrows moves the player
+- Virtual joystick appears at bottom of screen (default mode)
+- Dragging joystick moves player with analog feel
+- Toggle button switches to D-pad mode; tapping arrows moves player
+- Turbo button grayed out initially, glows yellow when charged to 100%
+- Activating turbo: player speeds up, trims 3x3 area, yellow glow effect
+- Control mode preference persists across page reloads
 - Trimming plays satisfying audio and visual effects
 - No scrolling or zooming on touch
 - Keyboard still works on desktop
