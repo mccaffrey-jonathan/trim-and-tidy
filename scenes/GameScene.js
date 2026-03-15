@@ -1,5 +1,7 @@
 import TileManager, { TILE_SIZE, IMPASSABLE } from '../entities/TileManager.js';
 import { levels } from '../levels/levelData.js';
+import Player from '../entities/Player.js';
+import { setupControls } from '../utils/controls.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -25,18 +27,28 @@ export default class GameScene extends Phaser.Scene {
         const key = 'tile_' + type;
 
         if (IMPASSABLE.includes(type)) {
-          const img = this.physics.add.staticImage(x + TILE_SIZE / 2, y + TILE_SIZE / 2, key);
+          const img = this.physics.add.staticImage(
+            x + TILE_SIZE / 2, y + TILE_SIZE / 2, key
+          );
           img.body.setSize(TILE_SIZE, TILE_SIZE);
           img.setDisplaySize(TILE_SIZE, TILE_SIZE);
           this.impassableGroup.add(img);
           this.tileSprites[r][c] = img;
         } else {
-          const img = this.add.image(x, y, key).setOrigin(0, 0);
-          this.tileSprites[r][c] = img;
+          this.tileSprites[r][c] = this.add.image(x, y, key).setOrigin(0, 0);
         }
       }
     }
-
     this.impassableGroup.refresh();
+
+    // Player
+    const { col, row } = levelData.playerStart;
+    this.player = new Player(this, col, row);
+    this.controls = setupControls(this);
+    this.physics.add.collider(this.player.sprite, this.impassableGroup);
+  }
+
+  update(time, delta) {
+    this.player.update(this.controls, delta);
   }
 }
