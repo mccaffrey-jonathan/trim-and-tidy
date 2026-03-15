@@ -343,7 +343,7 @@ function setupControls(scene) {
       else state.touch.left = true;
     }
   }
-  scene.input.on('pointerdown', (p) => { if (p.x > JX + JR + 30) return; activePtr = p; applyPtr(p); });
+  scene.input.on('pointerdown', (p) => { if (p.x > 280) return; activePtr = p; applyPtr(p); });
   scene.input.on('pointermove', (p) => { if (p === activePtr) applyPtr(p); });
   scene.input.on('pointerup', (p) => {
     if (p !== activePtr) return; activePtr = null;
