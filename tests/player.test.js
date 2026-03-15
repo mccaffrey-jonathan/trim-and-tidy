@@ -1,40 +1,38 @@
 import { describe, it, assert } from './testFramework.js';
+import { TILE_SIZE } from '../entities/TileManager.js';
 
 describe('Player - Tile Position', () => {
   it('calculates tile from pixel center correctly', () => {
-    assert.equal(Math.floor(75 / 30), 2);
-    assert.equal(Math.floor(195 / 30), 6);
-    assert.equal(Math.floor(0 / 30), 0);
-    assert.equal(Math.floor(29 / 30), 0);
-    assert.equal(Math.floor(30 / 30), 1);
+    assert.equal(Math.floor(75 / TILE_SIZE), 2);
+    assert.equal(Math.floor(195 / TILE_SIZE), 6);
+    assert.equal(Math.floor(0 / TILE_SIZE), 0);
+    assert.equal(Math.floor(29 / TILE_SIZE), 0);
+    assert.equal(Math.floor(30 / TILE_SIZE), 1);
   });
 
   it('handles pixel at exact tile boundary', () => {
-    // At x=30, player is in col 1 (not still in col 0)
-    assert.equal(Math.floor(30 / 30), 1);
-    // At x=59 still in col 1
-    assert.equal(Math.floor(59 / 30), 1);
+    assert.equal(Math.floor(TILE_SIZE / TILE_SIZE), 1);
+    assert.equal(Math.floor((TILE_SIZE * 2 - 1) / TILE_SIZE), 1);
+  });
+
+  it('TILE_SIZE is 30', () => {
+    assert.equal(TILE_SIZE, 30);
   });
 });
 
-describe('Player - Speed', () => {
-  it('base speed is 150', () => {
-    assert.equal(150, 150);
-  });
-
-  it('turbo speed is 2x base', () => {
-    const base = 150;
-    const turbo = base * 2;
-    assert.equal(turbo, 300);
-  });
-});
-
-describe('Player - Facing Direction', () => {
-  it('all four directions are valid', () => {
-    const valid = ['up', 'down', 'left', 'right'];
-    for (const dir of valid) {
-      assert.ok(valid.includes(dir));
-    }
+describe('Player - Input Priority', () => {
+  it('only one input source should drive movement at a time', () => {
+    // Simulates the priority logic from Player.update
+    const resolve = (kb, joy, dpad) => {
+      if (dpad) return 'dpad';
+      if (joy) return 'joystick';
+      if (kb) return 'keyboard';
+      return 'none';
+    };
+    assert.equal(resolve(true, true, true), 'dpad');
+    assert.equal(resolve(true, true, false), 'joystick');
+    assert.equal(resolve(true, false, false), 'keyboard');
+    assert.equal(resolve(false, false, false), 'none');
   });
 });
 
@@ -61,8 +59,13 @@ describe('Player - Turbo Charge Logic', () => {
 
   it('turbo timer counts down from 3000ms', () => {
     let timer = 3000;
-    timer -= 16.67; // one frame at 60fps
+    timer -= 16.67;
     assert.ok(timer > 0);
     assert.ok(timer < 3000);
+  });
+
+  it('turbo speed is 2x base (150 * 2 = 300)', () => {
+    const base = 150;
+    assert.equal(base * 2, 300);
   });
 });

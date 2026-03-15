@@ -38,6 +38,10 @@ export default class HUDScene extends Phaser.Scene {
 
     const gameScene = this.scene.get('GameScene');
     gameScene.events.on('updateHUD', this.onUpdate, this);
+
+    this.events.on('shutdown', () => {
+      if (this._timerPulse) { this._timerPulse.stop(); this._timerPulse = null; }
+    });
   }
 
   onUpdate(data) {

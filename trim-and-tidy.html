@@ -18,8 +18,6 @@
 
 // --- TileManager ---
 const TILE_SIZE = 30;
-const COLS = 13;
-const ROWS = 28;
 const TRIMMABLE = [1, 2, 3];
 const IMPASSABLE = [4, 5, 6, 7, 9];
 const POINTS = { 1: 10, 2: 25, 3: 50 };
@@ -166,7 +164,7 @@ const levels = [
 
 // --- Textures ---
 function generateTextures(scene) {
-  const T = 30, P = 24;
+  const T = TILE_SIZE, P = 24;
   const cfgs = [
     { key:'tile_0', color:0xD2B48C, d:null },
     { key:'tile_1', color:0x32CD32, d:'grass' },
@@ -267,18 +265,23 @@ class Player {
   update(controls, delta) {
     const { cursors, touch } = controls;
     let vx = 0, vy = 0;
-    if (cursors.left.isDown) { vx = -1; this.facing = 'left'; }
-    if (cursors.right.isDown) { vx = 1; this.facing = 'right'; }
-    if (cursors.up.isDown) { vy = -1; this.facing = 'up'; }
-    if (cursors.down.isDown) { vy = 1; this.facing = 'down'; }
-    if (Math.abs(touch.x) > 0.1 || Math.abs(touch.y) > 0.1) {
+    const hasKb = cursors.left.isDown||cursors.right.isDown||cursors.up.isDown||cursors.down.isDown;
+    const hasJoy = Math.abs(touch.x) > 0.1 || Math.abs(touch.y) > 0.1;
+    const hasDp = touch.left||touch.right||touch.up||touch.down;
+    if (hasDp) {
+      if (touch.left) { vx = -1; this.facing = 'left'; }
+      if (touch.right) { vx = 1; this.facing = 'right'; }
+      if (touch.up) { vy = -1; this.facing = 'up'; }
+      if (touch.down) { vy = 1; this.facing = 'down'; }
+    } else if (hasJoy) {
       vx = touch.x; vy = touch.y;
       this.facing = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'right' : 'left') : (vy > 0 ? 'down' : 'up');
+    } else if (hasKb) {
+      if (cursors.left.isDown) { vx = -1; this.facing = 'left'; }
+      if (cursors.right.isDown) { vx = 1; this.facing = 'right'; }
+      if (cursors.up.isDown) { vy = -1; this.facing = 'up'; }
+      if (cursors.down.isDown) { vy = 1; this.facing = 'down'; }
     }
-    if (touch.left) { vx = -1; this.facing = 'left'; }
-    if (touch.right) { vx = 1; this.facing = 'right'; }
-    if (touch.up) { vy = -1; this.facing = 'up'; }
-    if (touch.down) { vy = 1; this.facing = 'down'; }
     const spd = this.turboActive ? this.speed * 2 : this.speed;
     this.sprite.setVelocity(vx * spd, vy * spd);
     this.currentTile = { row: Math.floor(this.sprite.y / TILE_SIZE), col: Math.floor(this.sprite.x / TILE_SIZE) };
@@ -340,7 +343,7 @@ function setupControls(scene) {
       else state.touch.left = true;
     }
   }
-  scene.input.on('pointerdown', (p) => { if (p.x > 240) return; activePtr = p; applyPtr(p); });
+  scene.input.on('pointerdown', (p) => { if (p.x > JX + JR + 30) return; activePtr = p; applyPtr(p); });
   scene.input.on('pointermove', (p) => { if (p === activePtr) applyPtr(p); });
   scene.input.on('pointerup', (p) => {
     if (p !== activePtr) return; activePtr = null;
@@ -388,8 +391,14 @@ function handleTrimming(scene, row, col, delta) {
       const r = row+dr, c = col+dc;
       if (!tm.isTrimmable(r, c)) continue;
       const t = tm.getTile(r, c);
-      if (t === 1 || t === 2) { if (tm.trimTile(r, c).cleared) swapTile(scene, r, c); }
-      else if (t === 3) { if (tm.forceTrimHedge(r, c).cleared) swapTile(scene, r, c); }
+      if (t === 1 || t === 2) {
+        if (tm.trimTile(r, c).cleared) {
+          swapTile(scene, r, c); scene.player.addCharge(t === 1 ? 1 : 2.5);
+          if (t === 2) playDing(); else playSnip();
+        }
+      } else if (t === 3) {
+        if (tm.forceTrimHedge(r, c).cleared) { swapTile(scene, r, c); scene.player.addCharge(5); playCrunch(); }
+      }
     }
   } else {
     if (!tm.isTrimmable(row, col)) return;
@@ -453,6 +462,7 @@ class GameScene extends Phaser.Scene {
   init(data) { this.levelIndex = data.level ?? 0; }
   create() {
     this.cameras.main.fadeIn(300);
+    if (this.levelIndex >= levels.length) this.levelIndex = 0;
     const ld = levels[this.levelIndex];
     this.tileManager = new TileManager(ld);
     this.tileSprites = [];
@@ -500,7 +510,7 @@ class GameScene extends Phaser.Scene {
     const pct = this.tileManager.getTrimmablePercent();
     this.events.emit('updateHUD', {score:this.tileManager.score,percent:pct,timeRemaining:this.timeRemaining,chargePercent:this.player.chargePercent});
     if (pct >= this.requiredPercent) this.completeLevel(true, pct);
-    else if (this.timeRemaining <= 0) this.completeLevel(false, pct);
+    else if (this.timeRemaining <= 0) { this.timeRemaining = 0; this.completeLevel(false, pct); }
     this.prevTile = {row,col};
   }
   completeLevel(success, pct) {
@@ -531,6 +541,7 @@ class HUDScene extends Phaser.Scene {
     this.chargeBar = this.add.rectangle(136,832,0,6,0xFFFF00).setOrigin(0,0.5).setDepth(101);
     this.chargeLabel = this.add.text(195,822,'',{font:'bold 10px Arial',color:'#FFD700'}).setOrigin(0.5,1).setDepth(101);
     this.scene.get('GameScene').events.on('updateHUD', this.onUpdate, this);
+    this.events.on('shutdown', () => { if (this._timerPulse) { this._timerPulse.stop(); this._timerPulse = null; } });
   }
   onUpdate(d) {
     this.scoreText.setText('Score: ' + d.score);

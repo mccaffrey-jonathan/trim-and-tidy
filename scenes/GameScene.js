@@ -16,6 +16,7 @@ export default class GameScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.fadeIn(300);
+    if (this.levelIndex >= levels.length) this.levelIndex = 0;
     const levelData = levels[this.levelIndex];
     this.tileManager = new TileManager(levelData);
     this.tileSprites = [];
@@ -100,9 +101,11 @@ export default class GameScene extends Phaser.Scene {
       chargePercent: this.player.chargePercent
     });
 
+    // Win takes priority over timeout on same frame (player earned it)
     if (percent >= this.requiredPercent) {
       this.completeLevel(true, percent);
     } else if (this.timeRemaining <= 0) {
+      this.timeRemaining = 0;
       this.completeLevel(false, percent);
     }
 

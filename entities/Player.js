@@ -26,14 +26,18 @@ export default class Player {
     let vx = 0;
     let vy = 0;
 
-    // Keyboard input
-    if (cursors.left.isDown) { vx = -1; this.facing = 'left'; }
-    if (cursors.right.isDown) { vx = 1; this.facing = 'right'; }
-    if (cursors.up.isDown) { vy = -1; this.facing = 'up'; }
-    if (cursors.down.isDown) { vy = 1; this.facing = 'down'; }
+    // Input priority: D-pad > joystick > keyboard (touch overrides keyboard)
+    const hasKeyboard = cursors.left.isDown || cursors.right.isDown ||
+      cursors.up.isDown || cursors.down.isDown;
+    const hasJoystick = Math.abs(touch.x) > 0.1 || Math.abs(touch.y) > 0.1;
+    const hasDpad = touch.left || touch.right || touch.up || touch.down;
 
-    // Touch joystick (analog)
-    if (Math.abs(touch.x) > 0.1 || Math.abs(touch.y) > 0.1) {
+    if (hasDpad) {
+      if (touch.left) { vx = -1; this.facing = 'left'; }
+      if (touch.right) { vx = 1; this.facing = 'right'; }
+      if (touch.up) { vy = -1; this.facing = 'up'; }
+      if (touch.down) { vy = 1; this.facing = 'down'; }
+    } else if (hasJoystick) {
       vx = touch.x;
       vy = touch.y;
       if (Math.abs(vx) > Math.abs(vy)) {
@@ -41,13 +45,12 @@ export default class Player {
       } else {
         this.facing = vy > 0 ? 'down' : 'up';
       }
+    } else if (hasKeyboard) {
+      if (cursors.left.isDown) { vx = -1; this.facing = 'left'; }
+      if (cursors.right.isDown) { vx = 1; this.facing = 'right'; }
+      if (cursors.up.isDown) { vy = -1; this.facing = 'up'; }
+      if (cursors.down.isDown) { vy = 1; this.facing = 'down'; }
     }
-
-    // Touch D-pad (digital)
-    if (touch.left) { vx = -1; this.facing = 'left'; }
-    if (touch.right) { vx = 1; this.facing = 'right'; }
-    if (touch.up) { vy = -1; this.facing = 'up'; }
-    if (touch.down) { vy = 1; this.facing = 'down'; }
 
     // Turbo speed
     const speed = this.turboActive ? this.speed * 2 : this.speed;

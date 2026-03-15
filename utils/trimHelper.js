@@ -47,9 +47,17 @@ function trimArea(scene, row, col) {
       if (!tm.isTrimmable(r, c)) continue;
       const type = tm.getTile(r, c);
       if (type === 1 || type === 2) {
-        if (tm.trimTile(r, c).cleared) swapTile(scene, r, c);
+        if (tm.trimTile(r, c).cleared) {
+          swapTile(scene, r, c);
+          scene.player.addCharge(type === 1 ? 1 : 2.5);
+          if (type === 2) playDing(); else playSnip();
+        }
       } else if (type === 3) {
-        if (tm.forceTrimHedge(r, c).cleared) swapTile(scene, r, c);
+        if (tm.forceTrimHedge(r, c).cleared) {
+          swapTile(scene, r, c);
+          scene.player.addCharge(5);
+          playCrunch();
+        }
       }
     }
   }

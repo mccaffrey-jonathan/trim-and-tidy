@@ -1,6 +1,4 @@
 export const TILE_SIZE = 30;
-export const COLS = 13;
-export const ROWS = 28;
 
 export const TILE_TYPES = {
   EMPTY: 0, GRASS: 1, FLOWER: 2, HEDGE_LOW: 3, HEDGE_WALL: 4,

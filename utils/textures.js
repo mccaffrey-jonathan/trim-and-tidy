@@ -1,4 +1,5 @@
-const TILE = 30;
+import { TILE_SIZE } from '../entities/TileManager.js';
+const TILE = TILE_SIZE;
 const PLAYER = 24;
 
 const tileConfigs = [

@@ -43,7 +43,7 @@ function createTouchUI(scene, state) {
   let activePtr = null;
 
   scene.input.on('pointerdown', (p) => {
-    if (p.x > 240) return;
+    if (p.x > JX + JR + 30) return;
     activePtr = p;
     applyPointer(p, state);
   });
