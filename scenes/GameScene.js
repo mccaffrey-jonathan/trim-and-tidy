@@ -1,7 +1,8 @@
 import TileManager, { TILE_SIZE, IMPASSABLE } from '../entities/TileManager.js';
 import { levels } from '../levels/levelData.js';
 import Player from '../entities/Player.js';
-import { setupControls } from '../utils/controls.js';
+import { setupControls, updateTurboButton } from '../utils/controls.js';
+import { playSnip, playCrunch, playDing, playComplete, playFail } from '../utils/audio.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -13,29 +14,30 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
+    this.cameras.main.fadeIn(300);
     const levelData = levels[this.levelIndex];
     this.tileManager = new TileManager(levelData);
     this.tileSprites = [];
     this.impassableGroup = this.physics.add.staticGroup();
     this.buildTileGrid();
 
-    // Player
     const { col, row } = levelData.playerStart;
     this.player = new Player(this, col, row);
     this.controls = setupControls(this);
     this.physics.add.collider(this.player.sprite, this.impassableGroup);
 
-    // HUD
     this.scene.launch('HUDScene', { levelName: levelData.name });
 
-    // State
     this.prevTile = { row, col };
     this.levelComplete = false;
     this.timeRemaining = levelData.timeLimit;
     this.requiredPercent = levelData.requiredPercent;
 
-    // Spacebar for turbo
     this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+    // Pause on blur
+    this.game.events.on('blur', () => { this.scene.pause(); });
+    this.game.events.on('focus', () => { this.scene.resume(); });
   }
 
   buildTileGrid() {
@@ -69,20 +71,22 @@ export default class GameScene extends Phaser.Scene {
 
     this.player.update(this.controls, delta);
 
-    // Turbo activation
-    if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-      this.player.activateTurbo();
+    // Turbo activation (space or touch button)
+    if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || this.controls.turboPressed) {
+      if (this.player.activateTurbo()) {
+        this.cameras.main.shake(100, 0.005);
+      }
+      this.controls.turboPressed = false;
     }
 
-    // Trimming
+    updateTurboButton(this.controls, this.player.chargePercent);
+
     const { row, col } = this.player.getTilePosition();
     this.handleTrimming(row, col, delta);
 
-    // Timer
     this.timeRemaining -= delta / 1000;
     const percent = this.tileManager.getTrimmablePercent();
 
-    // Emit HUD update
     this.events.emit('updateHUD', {
       score: this.tileManager.score,
       percent,
@@ -90,7 +94,6 @@ export default class GameScene extends Phaser.Scene {
       chargePercent: this.player.chargePercent
     });
 
-    // Win/lose checks
     if (percent >= this.requiredPercent) {
       this.completeLevel(true, percent);
     } else if (this.timeRemaining <= 0) {
@@ -101,11 +104,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   handleTrimming(row, col, delta) {
-    const tm = this.tileManager;
-
-    // Reset hedge timer if moved off previous hedge
     if (row !== this.prevTile.row || col !== this.prevTile.col) {
-      tm.resetHedgeTimer(this.prevTile.row, this.prevTile.col);
+      this.tileManager.resetHedgeTimer(this.prevTile.row, this.prevTile.col);
     }
 
     if (this.player.turboActive) {
@@ -124,17 +124,20 @@ export default class GameScene extends Phaser.Scene {
       if (result.cleared) {
         this.swapTileTexture(row, col);
         this.player.addCharge(type === 1 ? 1 : 2.5);
+        if (type === 2) playDing(); else playSnip();
       }
     } else if (type === 3) {
       const result = this.tileManager.trimHedge(row, col, delta);
       if (result.cleared) {
         this.swapTileTexture(row, col);
         this.player.addCharge(5);
+        playCrunch();
+        this.cameras.main.shake(50, 0.002);
       }
     }
   }
 
-  trimArea(row, col, delta) {
+  trimArea(row, col) {
     for (let dr = -1; dr <= 1; dr++) {
       for (let dc = -1; dc <= 1; dc++) {
         const r = row + dr;
@@ -145,7 +148,6 @@ export default class GameScene extends Phaser.Scene {
           const result = this.tileManager.trimTile(r, c);
           if (result.cleared) this.swapTileTexture(r, c);
         } else if (type === 3) {
-          // Instant trim during turbo
           this.tileManager.grid[r][c] = 0;
           this.tileManager.trimmedCount++;
           this.tileManager.score += 50;
@@ -157,29 +159,29 @@ export default class GameScene extends Phaser.Scene {
   }
 
   swapTileTexture(row, col) {
-    const sprite = this.tileSprites[row][col];
+    const sprite = this.tileSprites[row]?.[col];
     if (!sprite) return;
     sprite.setTexture('tile_0');
-    // Quick scale animation
     this.tweens.add({
-      targets: sprite,
-      scaleX: 0.8, scaleY: 0.8,
-      duration: 50,
-      yoyo: true
+      targets: sprite, scaleX: 0.8, scaleY: 0.8,
+      duration: 50, yoyo: true
     });
   }
 
   completeLevel(success, percent) {
     this.levelComplete = true;
+    this.cameras.main.fadeOut(300);
+    if (success) playComplete(); else playFail();
+
     const stars = percent >= 100 ? 3 : percent >= 90 ? 2 : 1;
     const timeBonus = success ? Math.floor(Math.max(0, this.timeRemaining)) * 10 : 0;
-    this.scene.start('LevelCompleteScene', {
-      success,
-      levelIndex: this.levelIndex,
-      score: this.tileManager.score + timeBonus,
-      timeBonus,
-      percent,
-      stars
+
+    this.time.delayedCall(300, () => {
+      this.scene.start('LevelCompleteScene', {
+        success, levelIndex: this.levelIndex,
+        score: this.tileManager.score + timeBonus,
+        timeBonus, percent, stars
+      });
     });
   }
 }
