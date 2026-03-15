@@ -7,6 +7,6 @@ export default class BootScene extends Phaser.Scene {
 
   create() {
     generateTextures(this);
-    this.scene.start('GameScene');
+    this.scene.start('MenuScene');
   }
 }

@@ -1,6 +1,8 @@
 import BootScene from './scenes/BootScene.js';
+import MenuScene from './scenes/MenuScene.js';
 import GameScene from './scenes/GameScene.js';
 import HUDScene from './scenes/HUDScene.js';
+import LevelCompleteScene from './scenes/LevelCompleteScene.js';
 
 const config = {
   type: Phaser.AUTO,
@@ -15,7 +17,7 @@ const config = {
     default: 'arcade',
     arcade: { gravity: { y: 0 }, debug: false }
   },
-  scene: [BootScene, GameScene, HUDScene]
+  scene: [BootScene, MenuScene, GameScene, HUDScene, LevelCompleteScene]
 };
 
 const game = new Phaser.Game(config);
