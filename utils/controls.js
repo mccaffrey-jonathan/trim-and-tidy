@@ -2,7 +2,6 @@ const JOYSTICK_X = 120;
 const JOYSTICK_Y = 740;
 const JOYSTICK_R = 50;
 const DEADZONE = 10;
-const DPAD_SIZE = 40;
 const TURBO_X = 310;
 const TURBO_Y = 740;
 
@@ -14,10 +13,8 @@ export function setupControls(scene) {
   const savedMode = localStorage.getItem('controlMode');
   if (savedMode) state.mode = savedMode;
 
-  // Only create touch UI if touch is available
-  if (scene.sys.game.device.input.touch || true) {
-    createTouchUI(scene, state);
-  }
+  // Always create touch UI (works for desktop mouse too)
+  createTouchUI(scene, state);
 
   return state;
 }
@@ -57,7 +54,7 @@ function createTouchUI(scene, state) {
   let activePointer = null;
 
   scene.input.on('pointerdown', (pointer) => {
-    if (pointer.x / scene.scale.displayScale.x > 200) return; // right side reserved
+    if (pointer.x > 240) return; // right side reserved for turbo/toggle
     activePointer = pointer;
     handlePointerMove(pointer, state);
   });
@@ -82,8 +79,6 @@ function createTouchUI(scene, state) {
 }
 
 function handlePointerMove(pointer, state) {
-  // Scale pointer to game coordinates
-  const scale = pointer.camera ? 1 : 1;
   const dx = pointer.x - JOYSTICK_X;
   const dy = pointer.y - JOYSTICK_Y;
   const dist = Math.sqrt(dx * dx + dy * dy);

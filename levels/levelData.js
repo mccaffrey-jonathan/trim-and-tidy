@@ -2,6 +2,8 @@
 // 0=clear 1=grass 2=flower 3=hedge_low 4=hedge_wall
 // 5=house_wall 6=door 7=roof 8=path 9=water
 
+import { level3, level4, level5 } from './levelsAdvanced.js';
+
 const level1 = {
   id: 1,
   name: 'Front Yard',
@@ -78,4 +80,4 @@ const level2 = {
   ]
 };
 
-export const levels = [level1, level2];
+export const levels = [level1, level2, level3, level4, level5];
